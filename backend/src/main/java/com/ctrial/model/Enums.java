@@ -124,4 +124,51 @@ public final class Enums {
         AUDITOR,
         SPONSOR
     }
+
+    /**
+     * The five observability states a denominator fragment can be in. These are
+     * deliberately distinct: a fragment that is locally known but consent-blocked
+     * is <em>not</em> the same kind of evidence as one that is simply unobserved,
+     * and neither may be silently folded into a "no event" bucket.
+     */
+    public enum FragmentState {
+        /** Data is inside the global analysis plane. */
+        INCLUDED,
+        /** Locally known, but the consent scope forbids cross-border egress. */
+        KNOWN_RESTRICTED,
+        /** Registered and locally known, still inside the expected return window. */
+        KNOWN_PENDING_ARRIVAL,
+        /** Past the return window, but a centre audit found a record that never transmitted. */
+        AUDIT_FLAGGED_MISSING,
+        /** No schedule, dispensing or safety-hotline source observed the opportunity/event. */
+        UNOBSERVED_NO_ANCHOR
+    }
+
+    /** Pre-declared risk stratum used to partition the denominator. */
+    public enum RiskStratum {
+        HIGH,
+        STANDARD
+    }
+
+    /** Which estimation route was chosen (and whether the requested one was downgraded). */
+    public enum EstimateRoute {
+        PARTIAL_BOUNDS,
+        DELAY_CAPTURE_MODEL
+    }
+
+    /** Provenance of an observation / return. */
+    public enum SourceKind {
+        SCHEDULE,
+        DISPENSING,
+        HOTLINE,
+        AUDIT
+    }
+
+    /** Centre-audit finding kinds. */
+    public enum AuditFindingKind {
+        LATE_UNTREATED_SAE,
+        MISSING_VISIT,
+        DISPENSING_WITHOUT_RETURN,
+        ROUTINE_SAMPLE
+    }
 }

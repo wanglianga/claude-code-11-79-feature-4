@@ -8,6 +8,7 @@ import Eligibility from './views/Eligibility.vue'
 import Deliveries from './views/Deliveries.vue'
 import Watermarks from './views/Watermarks.vue'
 import ConsentProtocol from './views/ConsentProtocol.vue'
+import Observability from './views/Observability.vue'
 import { setAuth } from './lib/api.js'
 
 const HOST = process.env.API_HOST || '127.0.0.1'
@@ -110,5 +111,17 @@ describe('SPA renders against the live API', () => {
     const w = mountView(Watermarks)
     await wait(1200)
     expect(w.html()).toMatch(/CN-02/)
+  })
+
+  it('Observability ledger shows all five fragment states (incl. known-restricted and unobserved)', async () => {
+    const w = mountView(Observability)
+    await wait(1600)
+    const text = w.text()
+    expect(text).toContain('Observability')
+    for (const label of ['Known restricted', 'Unobserved (no anchor)', 'Audit-flagged missing', 'Included']) {
+      expect(text).toContain(label)
+    }
+    // the withdrawn-consent subject with an SAE is classified as restricted, not unobserved
+    expect(w.html()).toMatch(/PSN-B2/)
   })
 })

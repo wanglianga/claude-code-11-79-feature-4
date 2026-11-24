@@ -131,30 +131,34 @@ summary and digests stay intact for audit — the delivery is not pretended to h
 
 All commands below were executed in this workspace against a live instance. Results are quoted verbatim.
 
-### 5.1 Backend integration tests — 15/15 pass
+### 5.1 Backend integration tests — 25/25 pass
 
 ```bash
 cd backend && mvn test
 ```
 ```
-Tests run: 15, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 25, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 Covers: A/B/C/D rules; intersection semantics; both reconstruction routes agreeing (read-only and persisted);
 stale-snapshot invalidation; transport dedupe; conflicting-duplicate quarantine; withdrawal/correction race
-quarantine; delivery projection has no identity fields and survives revocation as an intact summary.
+quarantine; delivery projection has no identity fields and survives revocation as an intact summary. Plus the
+observability suite (`ObservabilityRulesTest`, 10 tests): five-state classification, known-restricted isolation,
+right-censoring, realised-interval-only delay calibration, correlated-source refusal of the capture model,
+closed-site coverage-failure escalation, versioned estimate retention, and the identifier-free global projection.
 
-### 5.2 Frontend render tests (live backend) — 7/7 pass
+### 5.2 Frontend render tests (live backend) — 8/8 pass
 
 ```bash
 cd frontend && npm run test        # vitest + happy-dom, mounts the real views against http://127.0.0.1:8080
 ```
 ```
 Test Files  1 passed (1)
-     Tests  7 passed (7)
+     Tests  8 passed (8)
 ```
 Asserts the Overview shows **15/15**, the Acceptance cards list A1/B1/C1/D2, the Eligibility pivot renders both
-planes and subject D as Pending, and the Consent / Deliveries / Watermarks views render without error.
+planes and subject D as Pending, the Consent / Deliveries / Watermarks views render without error, and the
+Observability view renders all five fragment-state labels with the withdrawn-consent subject present.
 
 ### 5.3 End-to-end API acceptance (live jar)
 
@@ -174,6 +178,20 @@ planes and subject D as Pending, and the Consent / Deliveries / Watermarks views
 The pinned watermark string for day 16 is
 `CN-01:AE=15(src=15,ack=15); … CN-02:VISIT=12(src=12,ack=9)…` (the CN-02 analysis stays at 9).
 
+### 5.4 Observability & sensitivity API (live jar, seeded cohort, day 16)
+
+| Endpoint / action | Observed result |
+|-------------------|-----------------|
+| `GET /api/observability/ledger?day=16` | 13 fragments: **3 KNOWN_RESTRICTED, 3 INCLUDED, 1 KNOWN_PENDING_ARRIVAL, 1 AUDIT_FLAGGED_MISSING, 5 UNOBSERVED_NO_ANCHOR**; B2 (withdrawn + SAE) = KNOWN_RESTRICTED |
+| `GET /api/observability/global?day=16` | permitted ranges + status summaries; string contains **no `PSN-`** |
+| `GET /api/observability/expected?day=16` | M13 (randomised D15): 7 right-censored, 0 overdue; framework totals 55 expected / 39 censored / 10 overdue-unobserved |
+| `GET /api/observability/delay?day=16` | 2 realised intervals fitted; 2 in-flight candidates excluded; strata split by site/period/grade; all flagged uncalibrated (<3) |
+| `GET /api/observability/estimate?day=16&route=PARTIAL_BOUNDS` | restricted band `[33.33, 133.33]` (local, N=3); unobserved band `[25, 30]` (audit floor 0.25 + clinical ceiling 0.3); combined `[7.69, 50]` |
+| `GET …/estimate?day=16&route=DELAY_CAPTURE_MODEL` | **downgraded** to PARTIAL_BOUNDS — "two source kinds share one manual register (correlated)" |
+| coverage-failure check | `active=true`, site `CN-03`, conditions include "pause trend conclusions" |
+| `POST /api/observability/estimates {day:16,versionGroup:EST-D16}` | `EST-D16-v1`; a second publish at day 20 → `EST-D16-v2`; **v1 retained** |
+| `POST /api/observability/estimates` as `china` | **403** (only GLOBAL_ANALYST/ADMIN may publish) |
+
 ---
 
 ## 6. Using the console
@@ -190,6 +208,9 @@ Open `http://localhost:8080` and sign in (the login screen lists the demo accoun
   fold analysis / break & restore link; run a recovery check.
 * **Deliveries** — compile by either route, inspect the pinned envelope, frozen member summary and projected
   records; revocation state is visible.
+* **Observability & sensitivity** — see §9: the five-state classification ledger, its global-safe projection, the
+  expected-opportunity framework, delay diagnostics, the partial-identification / capture-model estimator, and
+  versioned estimate records.
 * **Withdrawal** — propagate a recorded withdrawal, register disposition and tie-break rules, see executions.
 * **Recovery** — recovery reports (expand for per-domain digests), simulate a post-restore re-send, resolve
   quarantined races.
@@ -227,14 +248,94 @@ Open `http://localhost:8080` and sign in (the login screen lists the demo accoun
 ```
 backend/
   src/main/java/com/ctrial/
-    model/        JPA entities + Enums (the rule vocabulary)
+    model/        JPA entities + Enums (the rule vocabulary); observability entities
+                  (TreatmentPeriod, SubjectExposure, ObservationSource, SaeRecord,
+                  AnchorRecord, AuditFinding, PlannedVisitTemplate, ObservabilityEstimate)
     service/      EligibilityEngine (pure), EligibilityService, EligibilityRunService,
                   DeliveryService, RevocationService, RecoveryService, EventIngestService,
-                  StateService, AcceptanceService, AuditService
-    web/          ReadController, CommandController, SpaConfig
-    config/       SecurityConfig, DemoSeeder
-  src/test/java/com/ctrial/AcceptanceRulesTest.java
+                  StateService, AcceptanceService, AuditService,
+                  ObservabilityLedgerService, ExpectedOpportunityService,
+                  DelayCalibrationService, ObservabilityEstimateService
+    web/          ReadController, CommandController, ObservabilityController, SpaConfig
+    config/       SecurityConfig, DemoSeeder, ObservabilitySeeder
+  src/test/java/com/ctrial/AcceptanceRulesTest.java, ObservabilityRulesTest.java
 frontend/
-  src/            App, views/*, components/*, lib/api.js, lib/store.js, ui.test.js
+  src/            App, views/* (incl. Observability.vue), components/*, lib/api.js, lib/store.js, ui.test.js
 Dockerfile, compose.yaml
 ```
+
+---
+
+## 9. Observability, expected events, delay calibration & partial identification
+
+When a global serious-AE rate is judged before a China centre has fully entered the analysis plane, the "gap" is
+**not one thing**. This module treats five evidence states as distinct, never interchangeable:
+
+| Fragment state | Meaning | How it feeds the estimate |
+|----------------|---------|---------------------------|
+| `INCLUDED` | Inside the global analysis plane (returned events, or fully-observed genuine zero) | Counted directly |
+| `KNOWN_RESTRICTED` | Locally known but consent forbids egress (e.g. withdrawn global consent, yet an SAE is on file) | Bounded **locally** with a finite local denominator; **never** mixed into the unobserved rate |
+| `KNOWN_PENDING_ARRIVAL` | Registered, still inside the expected return window | May still arrive |
+| `AUDIT_FLAGGED_MISSING` | Past the window, but an independent audit anchor found the record | A known gap, not an unknown |
+| `UNOBSERVED_NO_ANCHOR` | No schedule / dispensing / safety-hotline source and no anchor | The **only** genuinely-unknown bucket; it alone drives the sensitivity band |
+
+### 9.1 What each component does
+
+* **Observability classification ledger** (`GET /api/observability/ledger`) — partitions every subject by
+  **site × treatment period × risk stratum** and assigns exactly one of the five states. The global side receives
+  only `GET /api/observability/global` — permitted **count ranges** and status summaries, **no pseudonyms** (verified:
+  the projection string contains no `PSN-`). Output for the seeded cohort at day 16: 3 restricted, 3 included,
+  1 pending-arrival, 1 audit-flagged, 5 unobserved; B2 (withdrawn global consent with an SAE) is `KNOWN_RESTRICTED`
+  and its event is **not** in the global-visible count.
+* **Expected-event framework** (`GET /api/observability/expected`) — generates the observation opportunities that
+  *should* exist from randomisation, planned visits, planned dispensing, the site's closure day and audit sampling.
+  A visit not yet due is **right-censored** (not late, not "no event"); a past-window visit with no return is an
+  *unobserved opportunity*, never "no event". M13 (randomised day 15) shows 7 censored visits and 0 overdue.
+* **Delay calibrator** (`GET /api/observability/delay`) — estimates what fraction of in-flight events may still
+  arrive using **only realised return intervals** (events that actually returned). In-flight events contribute
+  nothing to the distribution. Intervals are kept split by **site × period × grade**; strata with <3 realised
+  returns are flagged uncalibrated rather than pooled silently.
+* **Partial-identification estimator** (`GET /api/observability/estimate`) — separates `KNOWN_RESTRICTED` (bounded
+  locally on its own finite denominator) from the genuinely unobserved (a sensitivity band from independent-anchor
+  coverage, the pre-declared clinical upper limit and the audit finding rate). **No representativeness assumption.**
+* **Sensitivity & assumptions console** (the Vue view) — shows the global summary, the identifiable range, the key
+  assumptions, the named actions that would tighten the range, coverage-failure escalation and source-correlation
+  warnings.
+
+### 9.2 Route selection by anchor completeness
+
+* **`PARTIAL_BOUNDS`** (default) — assumption-light bounds. The global-visible rate is the floor; the restricted
+  and unobserved masses widen the ceiling. Conservative, and auditable even when anchors are scarce.
+* **`DELAY_CAPTURE_MODEL`** — narrower, *only* when independent anchors are sufficient **and**
+  schedule/dispensing/hotline coverage is adequate **and** the sources are independent. It is **refused and
+  downgraded** to `PARTIAL_BOUNDS` whenever any precondition fails — a model is never substituted for evidence that
+  does not exist. In the seed it is downgraded for two independent reasons (correlated hotline/audit register, and
+  the CN-03 coverage failure).
+
+### 9.3 Mandated behaviours exercised by the seed
+
+| Scenario in the seed | Ledger / estimator behaviour |
+|----------------------|------------------------------|
+| B2 withdrew global consent **and** has an SAE on file | `KNOWN_RESTRICTED`; only its **global visibility** changes; it is **not** counted as unobserved (test `withdrawnConsentWithSaeIsKnownRestrictedAndNotCountedAsUnobserved`) |
+| A visit not yet due (M13 randomised day 15) | **Right-censored**; not late, not "no event" (test `notYetDueVisitsAreRightCensoredNotLateOrZero`) |
+| Hotline and audit share one manual safety register | Flagged **correlated**; capture-model narrowing **prohibited** and the route downgraded (test `correlatedSourcesAreFlaggedAndPreventCaptureModel`) |
+| CN-03 closed on day 4 with post-closure dispensing but zero returns | Escalated as a **coverage failure** the delay model cannot explain; gives the "widen audit / pause trend conclusion" conditions (test `closedSiteSilenceEscalatesAsCoverageFailure`) |
+| A later re-estimate tightens the range | Written as a **new version**; the earlier published record is retained and still explained (test `reEstimateWritesNewVersionAndKeepsTheOldOne`) |
+
+### 9.4 API quick reference
+
+```bash
+A='admin:demo123'
+curl -s -u $A 'http://127.0.0.1:8080/api/observability/ledger?day=16'      # local, 5-state fragments (pseudonyms)
+curl -s -u $A 'http://127.0.0.1:8080/api/observability/global?day=16'      # global-safe ranges + summaries (no IDs)
+curl -s -u $A 'http://127.0.0.1:8080/api/observability/expected?day=16'    # expected opportunities (censoring)
+curl -s -u $A 'http://127.0.0.1:8080/api/observability/delay?day=16'       # realised-interval calibration
+curl -s -u $A 'http://127.0.0.1:8080/api/observability/estimate?day=16&route=DELAY_CAPTURE_MODEL'  # downgraded
+# publish a versioned record (GLOBAL_ANALYST or ADMIN only; a re-publish writes a new version)
+curl -s -u global:demo123 -X POST 'http://127.0.0.1:8080/api/observability/estimates' \
+  -H 'Content-Type: application/json' -d '{"day":16,"route":"PARTIAL_BOUNDS","versionGroup":"EST-D16"}'
+curl -s -u $A 'http://127.0.0.1:8080/api/observability/estimates'          # version history
+```
+
+`POST /api/observability/**` is restricted to `GLOBAL_ANALYST`/`ADMIN` (a China analyst gets **403**).
+

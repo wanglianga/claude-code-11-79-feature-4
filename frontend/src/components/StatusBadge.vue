@@ -32,7 +32,26 @@ const map = {
   SCHEDULED: { cls: 'warn', label: 'Scheduled' },
   EXECUTED: { cls: 'ok', label: 'Executed' },
   RETAIN_RESTRICTED: { cls: 'local', label: 'Retain restricted' },
-  DESTROY_AFTER: { cls: 'bad', label: 'Destroy after' }
+  DESTROY_AFTER: { cls: 'bad', label: 'Destroy after' },
+  // ---- observability fragment states ----
+  INCLUDED: { cls: 'ok', label: 'Included' },
+  KNOWN_RESTRICTED: { cls: 'local', label: 'Known restricted' },
+  KNOWN_PENDING_ARRIVAL: { cls: 'pend', label: 'Known pending arrival' },
+  AUDIT_FLAGGED_MISSING: { cls: 'warn', label: 'Audit-flagged missing' },
+  UNOBSERVED_NO_ANCHOR: { cls: 'bad', label: 'Unobserved (no anchor)' },
+  // ---- expected-opportunity statuses ----
+  OBSERVED: { cls: 'ok', label: 'Observed' },
+  IN_WINDOW: { cls: 'pend', label: 'In window' },
+  OVERDUE_UNOBSERVED: { cls: 'bad', label: 'Overdue (unobserved)' },
+  CENSORED_FUTURE: { cls: 'muted', label: 'Right-censored' },
+  CLOSED_OUT: { cls: 'warn', label: 'Closed out' },
+  // ---- estimate routes / coverage ----
+  PARTIAL_BOUNDS: { cls: 'local', label: 'Partial bounds' },
+  DELAY_CAPTURE_MODEL: { cls: 'ok', label: 'Delay / capture model' },
+  CORRELATED: { cls: 'bad', label: 'Correlated sources' },
+  COVERAGE_FAILURE: { cls: 'bad', label: 'Coverage failure' },
+  HIGH: { cls: 'bad', label: 'High risk' },
+  STANDARD: { cls: 'muted', label: 'Standard risk' }
 }
 
 function meta() {

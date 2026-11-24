@@ -34,6 +34,14 @@ public class Site {
     @Column(nullable = false)
     private boolean chinaResident;
 
+    /**
+     * Study day on which the centre closed, if it has. After this day the site
+     * generates no new observation opportunities, and a long silence from a
+     * closed centre is a coverage failure, not a delay.
+     */
+    @Column(name = "closure_day")
+    private Integer closureDay;
+
     public Site(String code, String name, String region, String sourceSystem, boolean chinaResident) {
         this.code = code;
         this.name = name;
